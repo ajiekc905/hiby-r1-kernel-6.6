@@ -1,0 +1,12 @@
+diff --git a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.h b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.h
+--- a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.h
++++ b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.h
+@@ -90,8 +90,7 @@
+  *		debug interface
+  ***********************************************/
+ 
+ #define DEBUG_PM
+-#define PRINT_DEBUG
+ 
+ 
+ #define U_IOBASE (sleep_param->uart_base)

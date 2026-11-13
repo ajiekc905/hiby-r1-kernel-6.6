@@ -1,0 +1,58 @@
+diff --git a/kernel/kernel-6.6/arch/mips/xburst/Kconfig b/kernel/kernel-6.6/arch/mips/xburst/Kconfig
+index 8d5487393..de2d3eb35 100644
+--- a/kernel/kernel-6.6/arch/mips/xburst/Kconfig
++++ b/kernel/kernel-6.6/arch/mips/xburst/Kconfig
+@@ -75,4 +75,13 @@ config XBURST_MXUV2
+ 	bool
+ 	default n
+ 
++config R1_LOG_RING
++	bool "Early console into a RAM log ring (HiBy R1 dev loop)"
++	depends on SOC_X1600 && EARLY_PRINTK
++
++config R1_LOG_RING_PHYS
++	hex "Log ring physical address"
++	depends on R1_LOG_RING
++	default 0x03f00000
++
+ endif
+diff --git a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Kconfig.DT b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Kconfig.DT
+index a8154699f..b9b80ef11 100644
+--- a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Kconfig.DT
++++ b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Kconfig.DT
+@@ -17,6 +17,9 @@ config DT_HALLEY6_V20
+ config DT_HALLEY6_V20_SEEKWAVE
+ 	bool "x1600 halley6 v20 seekwave wifi&bt"
+ 
++config DT_HIBY_R1
++	bool "HiBy R1"
++
+ endchoice
+ 
+ config DT_X1600_MODULE_BASE_DTS_FILE
+diff --git a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Makefile b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Makefile
+index e6d651896..6be787c98 100644
+--- a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Makefile
++++ b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/Makefile
+@@ -2,6 +2,10 @@ obj-y += setup.o
+ obj-y += regs_save_restore.o
+ obj-y += gpio.o
+ obj-y += reset.o
++ifdef CONFIG_R1_LOG_RING
++obj-y += r1ring.o
++else
+ obj-$(CONFIG_EARLY_PRINTK) += early_printk.o
++endif
+ obj-$(CONFIG_PM) += wakeup_src_show.o
+ obj-$(CONFIG_PM) += pm.o
+diff --git a/kernel/kernel-6.6/module_drivers/dts/Makefile b/kernel/kernel-6.6/module_drivers/dts/Makefile
+index e2dcb8d0a..34f39ea34 100644
+--- a/kernel/kernel-6.6/module_drivers/dts/Makefile
++++ b/kernel/kernel-6.6/module_drivers/dts/Makefile
+@@ -1,5 +1,6 @@
+ # SPDX-License-Identifier: GPL-2.0
+ dtb-$(CONFIG_DT_HALLEY6_V20)		+= x1600/halley6_v20.dtb
++dtb-$(CONFIG_DT_HIBY_R1)		+= x1600/hiby_r1.dtb
+ dtb-$(CONFIG_DT_PANDA_V10)	        += x1600/panda_v10.dtb
+ dtb-$(CONFIG_DT_GEWU_V10)		+= m300/gewu_v10.dtb
+ dtb-$(CONFIG_DT_GEWU_V12)		+= m300/gewu_v12.dtb

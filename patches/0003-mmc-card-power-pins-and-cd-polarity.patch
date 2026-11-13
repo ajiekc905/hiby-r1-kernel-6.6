@@ -1,0 +1,66 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
+index 92e5022c1..cec55768d 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
+@@ -22,6 +22,7 @@
+ #include <linux/gpio.h>
+ #include <linux/clk.h>
+ #include <linux/regulator/consumer.h>
++#include <linux/pinctrl/consumer.h>
+ #include <asm-generic/delay.h>
+ 
+ #include <linux/init.h>
+@@ -970,7 +971,7 @@ static int get_pin_status(struct gpio_desc *gd)
+ 		return PTR_ERR(gd);
+ 	}
+ 
+-	return gpiod_get_raw_value(gd);
++	return gpiod_get_value(gd);
+ }
+ 
+ static void set_pin_status(struct gpio_desc *gd, int enable)
+@@ -1147,11 +1148,15 @@ static inline void ingenic_mmc_power_on(struct ingenic_mmc_host *host)
+ 	} else if (host->pdata->gpio) {
+ 		set_pin_status(host->pdata->gpio->pwr, 1);
+ 	}
++	if (host->pins_off)
++		pinctrl_select_state(host->pins, host->pins_on);
+ }
+ 
+ static inline void ingenic_mmc_power_off(struct ingenic_mmc_host *host)
+ {
+ 	dev_vdbg(host->dev, "power_off\n");
++	if (host->pins_off)
++		pinctrl_select_state(host->pins, host->pins_off);
+ 
+ 	if (!IS_ERR(host->power)) {
+ 		/* if(regulator_is_enabled(host->power)) */
+@@ -1673,6 +1678,14 @@ static int mmc_ingenic_probe(struct platform_device *pdev)
+ 		return host->irq;
+ 	}
+ 
++	host->power = ERR_PTR(-ENODEV);
++	host->pins = devm_pinctrl_get(&pdev->dev);
++	if (!IS_ERR(host->pins)) {
++		host->pins_on = pinctrl_lookup_state(host->pins, PINCTRL_STATE_DEFAULT);
++		host->pins_off = pinctrl_lookup_state(host->pins, "off");
++		if (IS_ERR(host->pins_on) || IS_ERR(host->pins_off))
++			host->pins_off = NULL;
++	}
+ 	/* host->power = regulator_get(host->dev, "cpu_mem12"); */
+ 	/* if (IS_ERR(host->power)) { */
+ 	/*  dev_warn(host->dev, "vmmc regulator missing\n"); */
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.h b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.h
+index c3d972b03..12b313541 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.h
++++ b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.h
+@@ -117,6 +117,9 @@ struct ingenic_mmc_host {
+ 	struct clk                  *clk_cgu;
+ 	struct clk                  *clk_gate;
+ 	struct regulator            *power;
++	struct pinctrl              *pins;
++	struct pinctrl_state        *pins_on;
++	struct pinctrl_state        *pins_off;
+ 	struct mmc_request          *mrq;
+ 	struct mmc_command          *cmd;
+ 	struct mmc_data             *data;

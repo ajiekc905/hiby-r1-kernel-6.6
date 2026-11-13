@@ -1,0 +1,31 @@
+diff --git a/kernel/kernel-6.6/drivers/power/supply/Kconfig b/kernel/kernel-6.6/drivers/power/supply/Kconfig
+index a61bb1283..5b0d8eec0 100644
+--- a/kernel/kernel-6.6/drivers/power/supply/Kconfig
++++ b/kernel/kernel-6.6/drivers/power/supply/Kconfig
+@@ -115,6 +115,14 @@ config BATTERY_CPCAP
+ 	  Say Y here to enable support for battery on Motorola
+ 	  phones and tablets such as droid 4.
+ 
++config AXP2101_R1
++	tristate "HiBy R1 AXP2101 PMIC charger and supplies"
++	depends on I2C
++	select REGMAP_I2C
++	help
++	  The X-Powers AXP2101 of the HiBy R1: charger setup and the
++	  ac/usb power supplies. Regulators are left as configured.
++
+ config BATTERY_CW2015
+ 	tristate "CW2015 Battery driver"
+ 	depends on I2C
+diff --git a/kernel/kernel-6.6/drivers/power/supply/Makefile b/kernel/kernel-6.6/drivers/power/supply/Makefile
+index a8a9fa6de..256f11b35 100644
+--- a/kernel/kernel-6.6/drivers/power/supply/Makefile
++++ b/kernel/kernel-6.6/drivers/power/supply/Makefile
+@@ -24,6 +24,7 @@ obj-$(CONFIG_BATTERY_ACT8945A)	+= act8945a_charger.o
+ obj-$(CONFIG_BATTERY_AXP20X)	+= axp20x_battery.o
+ obj-$(CONFIG_CHARGER_AXP20X)	+= axp20x_ac_power.o
+ obj-$(CONFIG_BATTERY_CPCAP)	+= cpcap-battery.o
++obj-$(CONFIG_AXP2101_R1)	+= axp2101-r1.o
+ obj-$(CONFIG_BATTERY_CW2015)	+= cw2015_battery.o
+ obj-$(CONFIG_BATTERY_DS2760)	+= ds2760_battery.o
+ obj-$(CONFIG_BATTERY_DS2780)	+= ds2780_battery.o

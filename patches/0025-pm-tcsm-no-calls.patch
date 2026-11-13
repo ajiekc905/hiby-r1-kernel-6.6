@@ -1,0 +1,25 @@
+--- a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.c
++++ b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.c
+@@ -11,6 +11,11 @@
+ #include <asm/r4kcache.h>
+ #include "pm.h"
+ 
++#undef cpm_inl
++#undef cpm_outl
++#define cpm_inl(off) (*(volatile unsigned int *)(0xb0000000 + (off)))
++#define cpm_outl(val, off) (*(volatile unsigned int *)(0xb0000000 + (off)) = (val))
++
+ #define CORE_PD
+ #ifdef CORE_PD
+ #define X1600_IDLE_PD
+@@ -517,8 +522,8 @@
+ 	STR_MARK(63);
+ 	blast_scache32();
+ 	STR_MARK(64);
+-	__sync();
+-	__fast_iob();
++	__asm__ volatile("sync" ::: "memory");
++	__asm__ volatile("sync; nop" ::: "memory");
+ 
+ 	{
+ 		/* before power down cpu by set PD in OPCR, reduce cpu's frequency as the same as L2C's freq */

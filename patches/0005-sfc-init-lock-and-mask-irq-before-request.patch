@@ -1,0 +1,25 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c b/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c
+index b036d2a75..d1a4b7249 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_common.c
+@@ -951,6 +951,11 @@ struct sfc *sfc_res_init(struct platform_device *pdev)
+ 		return ERR_PTR(-ENOENT);
+ 	}
+ 
++	spin_lock_init(&sfc->spin_lock);
++	init_completion(&sfc->done);
++	sfc_mask_all_intc(sfc);
++	sfc_clear_all_intc(sfc);
++
+ 	err = devm_request_irq(&pdev->dev, sfc->irq, ingenic_sfc_pio_irq_callback, 0, pdev->name, sfc);
+ 	if (err) {
+ 		dev_err(&pdev->dev, "Cannot claim IRQ\n");
+@@ -959,8 +964,6 @@ struct sfc *sfc_res_init(struct platform_device *pdev)
+ 
+ 	/* SFC controller initializations for SFC */
+ 	ingenic_sfc_init_setup(sfc);
+-	spin_lock_init(&sfc->spin_lock);
+-	init_completion(&sfc->done);
+ 	return sfc;
+ }
+ 

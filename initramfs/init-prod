@@ -1,0 +1,92 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 ajiekc905
+/bin/busybox --install -s /bin
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev 2>/dev/null
+mkdir -p /dev/pts
+mount -t devpts devpts /dev/pts
+k() { echo "r1init: $*" >/dev/kmsg; }
+dump() {
+    k "--- $1"
+    shift
+    "$@" 2>&1 | while IFS= read -r l; do k "$l"; done
+}
+. /radios.sh
+. /usbnet.sh
+R=/rootfs
+k "userspace up at $(cut -d' ' -f1 /proc/uptime) s"
+
+halt_with() {
+    k "$1 requested"
+    kill -TERM -1 2>/dev/null
+    sleep 2
+    kill -KILL -1 2>/dev/null
+    sync
+    for m in $(awk -v r=$R '$2 ~ "^" r { print $2 }' /proc/mounts | sort -r); do
+        umount "$m" 2>/dev/null || umount -l "$m" 2>/dev/null
+    done
+    sync
+    $1 -f
+}
+trap 'halt_with poweroff' USR2
+trap 'halt_with reboot' TERM
+trap 'halt_with halt' USR1
+
+devmem 0x10010048 32 $((1 << 9))
+devmem 0x10010148 32 $((1 << 24))
+ifconfig lo 127.0.0.1 up
+[ -f /testnet ] && usb
+
+mkdir -p $R
+i=0
+until mount -t squashfs -o ro /dev/mtdblock_bbt_ro2 $R 2>/tmp/mnt.err; do
+    i=$((i + 1)); [ $i -gt 50 ] && { k "rootfs mount failed: $(cat /tmp/mnt.err)"; break; }
+    sleep 0.2
+done
+[ $i -le 50 ] && k "rootfs mounted after $i retries"
+if ubiattach -m 6 -d 1 /dev/ubi_ctrl > /tmp/ubi 2>&1; then
+    mount -t ubifs ubi1_0 $R/usr/data && k "userdata mounted rw" || k "userdata mount failed"
+else
+    dump ubiattach-failed cat /tmp/ubi
+fi
+mount -t proc proc $R/proc
+mount -t sysfs sys $R/sys
+mount -o rbind /dev $R/dev
+mount -t tmpfs tmpfs $R/tmp
+mount -t tmpfs tmpfs $R/run
+mount -t configfs none $R/sys/kernel/config
+
+mkdir -p $R/tmp/r1
+cp /r1boot.sh /r1screen /logo.jpeg $R/tmp/r1/
+B=/sys/class/backlight/backlight_pwm0
+if [ -c /dev/fb0 ]; then
+    chroot $R cmd_jpeg_display /tmp/r1/logo.jpeg > /dev/null 2>&1
+    bl=28
+    case "$(cat /sys/class/power_supply/battery/capacity /sys/class/power_supply/cw2015-battery/capacity 2>/dev/null | head -1)" in
+        [1-9]|1[0-5]) bl=12 ;;
+    esac
+    echo $bl > $B/brightness
+    k "splash, backlight $bl"
+fi
+
+bt &
+wifi &
+
+L=/usr/data/r1boot.log
+touch $R$L 2>/dev/null || L=/tmp/r1boot.log
+set --
+for d in /sys/block/mmcblk*; do
+    [ -e "$d/device/type" ] && [ "$(cat $d/device/type)" = SD ] && set -- "$@" "/dev/${d##*/}p1" "/dev/${d##*/}"
+done
+[ $# -gt 0 ] || set -- /dev/mmcblk1p1 /dev/mmcblk1
+k "card devices: $*"
+(R1BOOT_LOG=$L R1BOOT_SCREEN=/tmp/r1/r1screen R1BOOT_WIFI_ON=/bin/true R1BOOT_DEVS="$*" \
+    chroot $R /bin/sh /tmp/r1/r1boot.sh) &
+k "r1boot started, log $L"
+
+while :; do
+    sleep 3600 &
+    wait $!
+done

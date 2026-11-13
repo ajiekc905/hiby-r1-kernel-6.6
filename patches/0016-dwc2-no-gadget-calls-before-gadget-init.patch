@@ -1,0 +1,27 @@
+diff --git a/kernel/kernel-6.6/drivers/usb/dwc2/core.h b/kernel/kernel-6.6/drivers/usb/dwc2/core.h
+index 9e930ac76..69517101c 100644
+--- a/kernel/kernel-6.6/drivers/usb/dwc2/core.h
++++ b/kernel/kernel-6.6/drivers/usb/dwc2/core.h
+@@ -183,14 +183,20 @@ do { \
+ } while (0)
+ 
+ #define call_gadget_set_state(_hs, _state) \
+-	usb_gadget_set_state(&_hs->gadget, _state)
++do { \
++	if ((_hs)->gadget.ops) \
++		usb_gadget_set_state(&(_hs)->gadget, _state); \
++} while (0)
+ 
+ #define call_gadget_get_state(_hs)	_hs->gadget.state
+ 
+ #define call_gadget_get_speed(_hs)	_hs->gadget.speed
+ 
+ #define call_gadget_vbus_draw(_hs, _mA) \
+-	usb_gadget_vbus_draw(&_hs->gadget, _mA)
++do { \
++	if ((_hs)->gadget.ops) \
++		usb_gadget_vbus_draw(&(_hs)->gadget, _mA); \
++} while (0)
+ 
+ #define set_gadget_resume_state(_hs)	_hs->resume_state = _hs->gadget.state
+ #define get_gadget_resume_state(_hs)	_hs->resume_state

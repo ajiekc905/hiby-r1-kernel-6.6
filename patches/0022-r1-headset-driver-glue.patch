@@ -1,0 +1,23 @@
+diff --git a/kernel/kernel-6.6/drivers/misc/Kconfig b/kernel/kernel-6.6/drivers/misc/Kconfig
+--- a/kernel/kernel-6.6/drivers/misc/Kconfig
++++ b/kernel/kernel-6.6/drivers/misc/Kconfig
+@@ -589,3 +589,12 @@ config TCS1421_R1
+ 	  from the device tree (Source = host, anything else = device).
+ 
++config R1_HEADSET
++	tristate "HiBy R1 headset jack switch and inline remote"
++	depends on IIO && INPUT && OF
++	help
++	  The R1 headset detector (SADC channel 1, stock
++	  /sys/class/switch/headset/state) and the EarPods inline
++	  remote on SADC channel 2 (input device earpods_adc, stock
++	  earpods_adc_sw sysfs switch, mic bias on AXP2101 aldo4).
++
+ endmenu
+diff --git a/kernel/kernel-6.6/drivers/misc/Makefile b/kernel/kernel-6.6/drivers/misc/Makefile
+--- a/kernel/kernel-6.6/drivers/misc/Makefile
++++ b/kernel/kernel-6.6/drivers/misc/Makefile
+@@ -68,2 +68,3 @@ obj-$(CONFIG_TPS6594_ESM)	+= tps6594-esm.o
+ obj-$(CONFIG_TPS6594_PFSM)	+= tps6594-pfsm.o
+ obj-$(CONFIG_TCS1421_R1)	+= tcs1421-r1.o
++obj-$(CONFIG_R1_HEADSET)	+= r1-headset.o

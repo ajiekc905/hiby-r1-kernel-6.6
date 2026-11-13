@@ -1,0 +1,224 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 ajiekc905
+/bin/busybox --install -s /bin
+mount -t proc proc /proc
+mount -t sysfs sys /sys
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t debugfs debugfs /sys/kernel/debug
+k() { echo "r1init: $*" >/dev/kmsg; }
+dump() {
+    k "--- $1"
+    shift
+    "$@" 2>&1 | while IFS= read -r l; do k "$l"; done
+}
+k "userspace up at $(cut -d' ' -f1 /proc/uptime) s"
+dump uname uname -a
+dump cmdline cat /proc/cmdline
+dump cpuinfo cat /proc/cpuinfo
+dump meminfo head -5 /proc/meminfo
+dump interrupts cat /proc/interrupts
+dump iomem cat /proc/iomem
+dump devices ls /sys/bus/platform/devices
+dump drivers ls /sys/bus/platform/drivers
+dump deferred cat /sys/kernel/debug/devices_deferred
+dump clk_summary cat /sys/kernel/debug/clk/clk_summary
+dump gpio cat /sys/kernel/debug/gpio
+card() {
+    i=0
+    while [ $i -lt 125 ]; do
+        set -- /dev/mmcblk*p1
+        [ -b "$1" ] && break
+        [ $((i % 5)) = 0 ] && k "card wait $i: PC=$(devmem 0x10010200 32) $(grep -E "gpio-(54|89) " /sys/kernel/debug/gpio | tr -s " " | tr "\n" ";") $(grep -E "^(clock|power mode|vdd)" /sys/kernel/debug/mmc*/ios 2>/dev/null | tr -s "\t " " " | tr "\n" ";")"
+        sleep 0.2; i=$((i + 1))
+    done
+    dump partitions cat /proc/partitions
+    for f in /sys/kernel/debug/mmc*/ios; do [ -f "$f" ] && dump "$f" cat "$f"; done
+    [ -b "$1" ] || { k "card: no partition after 25 s"; return; }
+    mount -t exfat -o ro "$1" /mnt || { k "card: ro mount of $1 failed"; return; }
+    k "card: $1 mounted ro"
+    dump k6 ls -l /mnt/k6
+    [ -f /mnt/k6/dacmode ] && DACMODE=1 && k "card: dacmode flag, the player runs as the USB DAC"
+    if [ -f /mnt/k6/check.md5 ] && (cd /mnt/k6 && md5sum -c check.md5) > /tmp/md5 2>&1; then
+        dump md5 cat /tmp/md5
+        if mount -o remount,rw /mnt; then
+            k "card: remounted rw, writing k6/6x-boot.log"
+            dmesg > /mnt/k6/6x-boot.log
+            sync
+        else
+            k "card: rw remount failed"
+        fi
+    else
+        dump md5-failed cat /tmp/md5
+        k "card: read check failed or no check.md5, card left untouched"
+    fi
+    umount /mnt && k "card: unmounted"
+}
+pet() {
+    n=0
+    while [ ! -e /tmp/nopet ]; do
+        [ $((n % 12)) = 0 ] && k "alive $(cut -d' ' -f1 /proc/uptime)"
+        n=$((n + 1))
+        c=$(($(devmem 0x10002008 32) & 0xffff))
+        t=$((c + 916))
+        [ $t -gt 65535 ] && t=65535
+        devmem 0x10002000 32 $(((t << 16) | t))
+        [ $t = 65535 ] && break
+        sleep 5
+    done
+    k "watchdog no longer moved forward"
+}
+dac() {
+    devmem 0x10010048 32 $((1 << 9))
+    devmem 0x10010148 32 $((1 << 24))
+    k "dac: TCS1421 straps set to Sink"
+    mount -t configfs none /sys/kernel/config || return
+    R=/rootfs
+    P=/usr/data/mnt/sd_0/player
+    mount -t configfs none $R/sys/kernel/config 2>/dev/null
+    mount -o remount,rw $R/usr/data/mnt/sd_0 || { k "dac: card rw remount failed"; return; }
+    [ -x $R$P/player ] || { k "dac: no player on the card"; return; }
+    (PLAYER_SINK=alsa:hw:0,0 timeout 900 chroot $R $P/player 0 0 fb $P/data - 24 > $R/usr/data/mnt/sd_0/k6/dac.log 2>&1) &
+    k "dac: player started with PLAYER_SINK=alsa:hw:0,0, log on the card as k6/dac.log"
+    K=$R/usr/data/mnt/sd_0/k6
+    : > $K/dac-stats.txt
+    while :; do
+        echo "$(cut -d' ' -f1 /proc/uptime) $(cat /sys/class/uac_sa/uac_sa/stats 2>/dev/null) udc=$(cat /sys/class/udc/*/state 2>/dev/null)" >> $K/dac-stats.txt
+        dmesg > $K/dac-dmesg.txt
+        sync
+        sleep 3
+    done &
+}
+flash() {
+    i=0
+    while [ ! -c /dev/mtd0 ] && [ $i -lt 25 ]; do sleep 0.2; i=$((i + 1)); done
+    dump mtd cat /proc/mtd
+    for d in /dev/mtd[0-9] /dev/mtd[0-9][0-9]; do
+        [ -c "$d" ] || continue
+        t0=$(cut -d' ' -f1 /proc/uptime)
+        m=$(dd if="$d" bs=131072 2>/dev/null | md5sum | cut -d' ' -f1)
+        k "md5 $d $m ($t0 -> $(cut -d' ' -f1 /proc/uptime) s)"
+    done
+    dump bbt ls -l /dev/mtdblock_bbt_ro*
+    mkdir -p /rootfs
+    if mount -t squashfs -o ro /dev/mtdblock_bbt_ro2 /rootfs; then
+        dump rootfs ls /rootfs /rootfs/etc/init.d
+        dump version cat /rootfs/etc/version /rootfs/usr/data/version 2>/dev/null
+        umount /rootfs
+    else
+        k "flash: squashfs mount of mtdblock_bbt_ro2 failed"
+    fi
+}
+fwroot() {
+    R=/rootfs
+    mount -t squashfs -o ro /dev/mtdblock_bbt_ro2 $R || { k "fwroot: rootfs mount failed"; return; }
+    if ubiattach -m 6 -d 1 /dev/ubi_ctrl >/tmp/ubi 2>&1; then
+        dump ubiattach cat /tmp/ubi
+        mount -t ubifs -o ro ubi1_0 $R/usr/data && k "fwroot: userdata mounted ro" || k "fwroot: userdata mount failed"
+    else
+        dump ubiattach-failed cat /tmp/ubi
+    fi
+    mount -t proc proc $R/proc
+    mount -t sysfs sys $R/sys
+    mount -o bind /dev $R/dev
+    mount -t tmpfs tmpfs $R/tmp
+    mount -t tmpfs tmpfs $R/run
+    set -- /dev/mmcblk*p1
+    if [ -b "$1" ] && [ -d $R/usr/data/mnt/sd_0 ]; then
+        mount -t exfat -o ro "$1" $R/usr/data/mnt/sd_0 && k "fwroot: card mounted ro at /usr/data/mnt/sd_0"
+    fi
+    dump usrdata ls -la $R/usr/data
+    dump df df -k
+    dump glibc chroot $R /lib/libc.so.6
+    dump fw-busybox chroot $R /bin/busybox uname -a
+    dump fw-dbus chroot $R /usr/bin/dbus-daemon --version
+    P=/usr/data/mnt/sd_0/player
+    if [ -z "$DACMODE" ] && [ -x $R$P/player ]; then
+        t0=$(cut -d' ' -f1 /proc/uptime)
+        dump player env PLAYER_SINK=none timeout 90 chroot $R $P/player 480 360 /tmp/r1.ppm $P/data - 24
+        k "player exit after $t0 -> $(cut -d' ' -f1 /proc/uptime) s"
+        dump ppm ls -l $R/tmp/r1.ppm
+    fi
+    k "fwroot: left mounted at $R (chroot $R /bin/sh)"
+}
+display() {
+    [ -c /dev/fb0 ] || { k "display: no /dev/fb0"; return; }
+    dump fb cat /proc/fb
+    dump fbmode cat /sys/class/graphics/fb0/modes /sys/class/graphics/fb0/bits_per_pixel /sys/class/graphics/fb0/virtual_size
+    B=/sys/class/backlight/backlight_pwm0
+    dump backlight ls /sys/class/backlight /sys/class/leds
+    [ -d $B ] && echo 28 > $B/brightness && k "display: backlight $(cat $B/actual_brightness)/$(cat $B/max_brightness)"
+    dd if=/dev/urandom of=/dev/fb0 bs=4096 2>/dev/null
+    k "display: noise written to fb0"
+    sleep 3
+    P=/usr/data/mnt/sd_0/player
+    if [ -z "$DACMODE" ] && [ -x /rootfs$P/player ]; then
+        PLAYER_SINK=none timeout 30 chroot /rootfs $P/player 0 0 fb $P/data - 24 > /tmp/plfb.log 2>&1
+        k "display: player on fb0 exit $?"
+        dump player-fb tail -20 /tmp/plfb.log
+        echo 0 > /sys/class/graphics/fb0/blank
+        [ -d $B ] && echo 28 > $B/brightness && k "display: backlight back to 28"
+    fi
+}
+inputs() {
+    dump input cat /proc/bus/input/devices
+    for c in 0 1 2 3; do
+        r=/sys/bus/iio/devices/iio:device0/in_voltage${c}_raw
+        v=$(cat $r 2>&1)
+        case "$v" in
+            ''|*[!0-9]*) k "adc ch$c read failed: $v" ;;
+            *) k "adc ch$c raw $v = $((v * 3300 / 4096)) mV" ;;
+        esac
+    done
+    for e in /dev/input/event*; do
+        [ -c "$e" ] || continue
+        n=$(cat /sys/class/input/${e##*/}/device/name 2>/dev/null)
+        f=/tmp/${e##*/}.raw
+        : > "$f"
+        dd if="$e" of="$f" bs=16 2>/dev/null &
+        (
+            seen=0
+            while :; do
+                sleep 2
+                total=$(($(wc -c < "$f") / 16))
+                [ "$total" -gt "$seen" ] || continue
+                dd if="$f" bs=16 skip="$seen" count=$((total - seen)) 2>/dev/null |
+                    hexdump -v -e '2/4 "%u " 2/2 " %u" 1/4 " %d" "\n"' |
+                    while read -r s u t c v; do
+                        [ "$t" = 0 ] || k "ev $n type $t code $c value $v"
+                    done
+                seen=$total
+            done
+        ) &
+    done
+    k "inputs: logging events (press keys, touch the screen)"
+}
+power() {
+    dump power ls /sys/class/power_supply
+    for s in /sys/class/power_supply/*; do
+        [ -d "$s" ] || continue
+        k "power: ${s##*/} type=$(cat $s/type 2>/dev/null) online=$(cat $s/online 2>/dev/null) status=$(cat $s/status 2>/dev/null) capacity=$(cat $s/capacity 2>/dev/null) voltage=$(cat $s/voltage_now 2>/dev/null)"
+    done
+    dump irq-pb23 grep -i axp /proc/interrupts
+}
+audio() {
+    dump asound cat /proc/asound/cards
+    dump snd ls -la /dev/snd
+    dump pcm cat /proc/asound/pcm
+}
+. /radios.sh
+. /usbnet.sh
+pet &
+flash
+card
+if [ -z "$DACMODE" ]; then usb; fi
+fwroot
+if [ -n "$DACMODE" ]; then dac; fi
+bt &
+wifi &
+inputs
+power
+audio
+display
+k "done; watchdog deadline kept 20 s ahead, ~23 min at most (touch /tmp/nopet to stop)"
+while :; do sleep 3600; done

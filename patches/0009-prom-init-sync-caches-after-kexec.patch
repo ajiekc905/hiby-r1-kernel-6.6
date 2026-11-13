@@ -1,0 +1,18 @@
+--- a/kernel/kernel-6.6/arch/mips/xburst/common/prom.c
++++ b/kernel/kernel-6.6/arch/mips/xburst/common/prom.c
+@@ -26,8 +26,15 @@ extern struct plat_smp_ops ingenic_soc_smp_ops;
+ 
+ static void *_fw_fdt_addr;
+ 
++#ifdef CONFIG_R1_LOG_RING
++void r1_kexec_cache_sync(void);
++#endif
++
+ void __init prom_init(void)
+ {
++#ifdef CONFIG_R1_LOG_RING
++	r1_kexec_cache_sync();
++#endif
+ 	fw_init_cmdline();
+ 
+ 	if (fw_arg0 == 0 && fw_arg1 == 0xffffffffUL) {

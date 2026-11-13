@@ -1,0 +1,62 @@
+diff --git a/kernel/kernel-6.6/sound/soc/codecs/cs43130.c b/kernel/kernel-6.6/sound/soc/codecs/cs43130.c
+index 206008bde..26098e813 100644
+--- a/kernel/kernel-6.6/sound/soc/codecs/cs43130.c
++++ b/kernel/kernel-6.6/sound/soc/codecs/cs43130.c
+@@ -327,6 +327,21 @@ static int cs43130_set_pll(struct snd_soc_component *component, int pll_id, int
+ 	return ret;
+ }
+ 
++static int cs43130_wait_ready(struct cs43130_private *cs43130,
++			      unsigned int bit)
++{
++	unsigned int reg;
++	int i;
++
++	for (i = 0; i < 100; i++) {
++		if (!regmap_read(cs43130->regmap, CS43130_INT_STATUS_1, &reg) &&
++		    (reg & bit))
++			return 1;
++		usleep_range(1000, 1100);
++	}
++	return 0;
++}
++
+ static int cs43130_change_clksrc(struct snd_soc_component *component,
+ 				 enum cs43130_mclk_src_sel src)
+ {
+@@ -417,8 +432,7 @@ static int cs43130_change_clksrc(struct snd_soc_component *component,
+ 				   CS43130_PLL_RDY_INT_MASK, 0);
+ 		regmap_update_bits(cs43130->regmap, CS43130_PWDN_CTL,
+ 				   CS43130_PDN_PLL_MASK, 0);
+-		ret = wait_for_completion_timeout(&cs43130->pll_rdy,
+-						  msecs_to_jiffies(100));
++		ret = cs43130_wait_ready(cs43130, CS43130_PLL_RDY_INT);
+ 		regmap_update_bits(cs43130->regmap, CS43130_INT_MASK_1,
+ 				   CS43130_PLL_RDY_INT_MASK,
+ 				   1 << CS43130_PLL_RDY_INT_SHIFT);
+@@ -2507,18 +2521,20 @@ static int cs43130_i2c_probe(struct i2c_client *client)
+ 	init_completion(&cs43130->pll_rdy);
+ 	init_completion(&cs43130->hpload_evt);
+ 
+-	ret = devm_request_threaded_irq(&client->dev, client->irq,
++	if (client->irq > 0) {
++		ret = devm_request_threaded_irq(&client->dev, client->irq,
+ 					NULL, cs43130_irq_thread,
+ 					IRQF_ONESHOT | IRQF_TRIGGER_LOW,
+ 					"cs43130", cs43130);
+-	if (ret != 0) {
+-		dev_err(&client->dev, "Failed to request IRQ: %d\n", ret);
+-		goto err;
++		if (ret != 0) {
++			dev_err(&client->dev, "Failed to request IRQ: %d\n", ret);
++			goto err;
++		}
+ 	}
+ 
+ 	cs43130->mclk_int_src = CS43130_MCLK_SRC_RCO;
+ 
+-	pm_runtime_set_autosuspend_delay(&client->dev, 100);
++	pm_runtime_set_autosuspend_delay(&client->dev, -1);
+ 	pm_runtime_use_autosuspend(&client->dev);
+ 	pm_runtime_set_active(&client->dev);
+ 	pm_runtime_enable(&client->dev);

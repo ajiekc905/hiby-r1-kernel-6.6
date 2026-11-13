@@ -1,0 +1,54 @@
+--- a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
+@@ -983,9 +983,9 @@
+ 	gpiod_set_raw_value(gd, enable);
+ }
+ 
+-static void ingenic_mmc_detect(struct timer_list *t)
++static void ingenic_mmc_detect_work(struct work_struct *w)
+ {
+-	struct ingenic_mmc_host *host = from_timer(host, t, detect_timer);
++	struct ingenic_mmc_host *host = container_of(w, struct ingenic_mmc_host, detect_work);
+ 	bool present;
+ 	bool present_old;
+ 	static int irq_disable_count;
+@@ -1041,6 +1041,13 @@
+ 	enable_irq(gpiod_to_irq(host->pdata->gpio->cd));
+ }
+ 
++static void ingenic_mmc_detect(struct timer_list *t)
++{
++	struct ingenic_mmc_host *host = from_timer(host, t, detect_timer);
++
++	schedule_work(&host->detect_work);
++}
++
+ /**
+  *  ingenic_mmc_manual_detect - insert or remove card manually
+  *  @index: host->index, namely the index of the controller.
+@@ -1485,6 +1492,7 @@
+ 		break;
+ 	case REMOVABLE:
+ 		if (card_gpio->cd) {
++			INIT_WORK(&host->detect_work, ingenic_mmc_detect_work);
+ 			timer_setup(&host->detect_timer, ingenic_mmc_detect, 0);
+ 			ret = devm_request_irq(host->dev, gpiod_to_irq(card_gpio->cd),
+ 			                       ingenic_mmc_detect_handler,
+--- a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.h
++++ b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.h
+@@ -2,6 +2,7 @@
+ #define __INGENIC_MMC_H__
+ 
+ #include "ingenic_mmc_reg.h"
++#include <linux/workqueue.h>
+ #include <linux/interrupt.h>
+ enum {
+ 	DONTCARE = 0,
+@@ -125,6 +126,7 @@
+ 	struct mmc_data             *data;
+ 	struct mmc_host             *mmc;
+ 	struct timer_list            detect_timer;
++	struct work_struct           detect_work;
+ 	struct timer_list            request_timer;
+ 	struct tasklet_struct        tasklet;
+ 	struct list_head             list;

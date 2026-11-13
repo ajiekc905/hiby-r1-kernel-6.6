@@ -1,0 +1,170 @@
+--- a/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.c
++++ b/kernel/kernel-6.6/arch/mips/xburst/soc-x1600/pm.c
+@@ -128,6 +128,18 @@
+ #endif	//PM_TEST
+ /*************************************************************************************/
+ 
++#define STR_RTC(n) do { \
++	volatile unsigned int *_rc = (volatile unsigned int *)0xb0003000; \
++	volatile unsigned int *_ra = (volatile unsigned int *)0xb0003008; \
++	volatile unsigned int *_rw = (volatile unsigned int *)0xb000303c; \
++	int _i; \
++	for (_i = 0; _i < 100000 && !(*_rc & 0x80); _i++) ; \
++	*_rw = 0xA55A; \
++	for (_i = 0; _i < 100000 && !(*_rw & 0x80000000); _i++) ; \
++	*_ra = 0x5EED0000 | ((n) & 0xff); \
++} while (0)
++#define STR_MARK(n) do { *(volatile unsigned int *)0xa3ffff00 = (n); STR_RTC(n); } while (0)
++#define STR_T(n) (*(volatile unsigned int *)0xb3423cc0 = (n))
+ static void memory_pd_enter(void)
+ {
+ #ifdef MEMORY_PD
+@@ -387,6 +399,7 @@
+ 
+ static noinline void cpu_resume_bootup(void)
+ {
++	STR_T(5);
+ 	TCSM_PCHAR('X');
+ 
+ 	__asm__ volatile(
+@@ -409,6 +422,7 @@
+ 	unsigned int r11s6;
+ 	unsigned int r16s6;
+ 
++	STR_T(6);
+ 	TCSM_PCHAR('R');
+ 
+ 	/* set reset entry */
+@@ -439,10 +453,12 @@
+ 
+ 		while (!(reg_ddr_phy(0x42) & 0x8))
+ 			serial_put_hex(reg_ddr_phy(0x42));
++		STR_T(7);
+ 
+ 		/* dfi_init_start = 0, wait dfi_init_complete */
+ 		*(volatile unsigned int *)0xb301208c &= ~1;
+ 		while(!(*(volatile unsigned int *)0xb301208c & (0x1 << 1)));
++		STR_T(8);
+ 
+ 		/* bufferen_core = 1 */
+ 		tmp = *(volatile unsigned int *)0xb3012034;
+@@ -454,9 +470,11 @@
+ 		ddr_writel(ddrc_ctrl, DDRC_CTRL);
+ 
+ 		while(ddr_readl(DDRC_STATUS) & (1<<2));
++		STR_MARK(20);
+ 
+ 		TCSM_DELAY(1000);
+ 		TCSM_PCHAR('1');
++		STR_MARK(21);
+ 		ddrp_auto_calibration();
+ 		TCSM_PCHAR('2');
+ 
+@@ -478,6 +496,8 @@
+ 	}
+ 
+ 
++	STR_T(10);
++	STR_MARK(11);
+ 	TCSM_PCHAR('5');
+ 
+ 	__asm__ volatile(
+@@ -496,12 +516,17 @@
+ static noinline void cpu_sleep(void)
+ {
+ 
++	STR_MARK(6);
+ 	TCSM_PCHAR('C');
+ 
++	STR_MARK(61);
+ 	sleep_param->cpu_div = cpm_inl(CPM_CPCCR) & 0xf;
+ 
++	STR_MARK(62);
+ 	blast_dcache32();
++	STR_MARK(63);
+ 	blast_scache32();
++	STR_MARK(64);
+ 	__sync();
+ 	__fast_iob();
+ 
+@@ -524,9 +549,11 @@
+ 		val |= (1 << 22);
+ 		cpm_outl(val, CPM_CPCCR);
+ 
++		STR_MARK(65);
+ 		while (cpm_inl(CPM_CPCSR) & 1);
+ 	}
+ 
++	STR_MARK(7);
+ 	TCSM_PCHAR('D');
+ 
+ 
+@@ -561,11 +588,13 @@
+ 		tmp = *(volatile unsigned int *)0xa0000000;
+ 
+ 
++		STR_MARK(8);
+ 		/* DDR self refresh, */
+ 		ddrc_ctrl = ddr_readl(DDRC_CTRL);
+ 		ddrc_ctrl |= 1 << 5;
+ 		ddr_writel(ddrc_ctrl, DDRC_CTRL);
+ 		while(!(ddr_readl(DDRC_STATUS) & (1<<2)));
++		STR_T(2);
+ 
+ 
+ 		/* bufferen_core = 0 */
+@@ -597,6 +626,7 @@
+ 		reg_ddr_phy(0x21) |= (1 << 1);
+ 	}
+ 
++	STR_T(3);
+ 	TCSM_PCHAR('W');
+ 	__asm__ volatile(
+ 		".set push	\n\t"
+@@ -608,6 +638,7 @@
+ 		".set pop	\n\t"
+ 	);
+ 
++	STR_T(4);
+ 	TCSM_PCHAR('N');
+ 
+ 	TCSM_PCHAR('\r');
+@@ -640,6 +671,7 @@
+ 
+ 
+ 	printk("x1600 pm enter!!\n");
++	STR_MARK(1);
+ 
+ 	*(volatile unsigned int *)0xb0000020 &= ~(1 << 21);
+ 	set_c0_status(0x100 << 2);
+@@ -656,6 +688,7 @@
+ 	load_func_to_tcsm((unsigned int *)SLEEP_CPU_RESUME_TEXT, (unsigned int *)cpu_resume, SLEEP_CPU_RESUME_LEN);
+ 	load_func_to_tcsm((unsigned int *)SLEEP_CPU_SLEEP_TEXT, (unsigned int *)cpu_sleep, SLEEP_CPU_SLEEP_LEN);
+ 
++	STR_MARK(2);
+ 	if (state == PM_SUSPEND_STANDBY) {
+ #ifdef X1600_IDLE_PD
+ 		soc_pm_idle_pd();
+@@ -682,6 +715,7 @@
+ 
+ 
+ 	memory_pd_enter();
++	STR_MARK(4);
+ 
+ #ifdef PM_TEST
+ 	pm_test_config();
+@@ -697,11 +731,14 @@
+ 	printk("intc1 mask = 0x%x\n", *(volatile unsigned int *)0xb0001024);
+ #endif
+ 
++	STR_MARK(5);
+ 	mb();
+ 	save_goto((unsigned int)SLEEP_CPU_SLEEP_TEXT);
+ 	mb();
+ 
++	STR_MARK(9);
+ 	soc_post_wakeup();
++	STR_MARK(10);
+ 
+ 	show_wakeup_sources();
+ 

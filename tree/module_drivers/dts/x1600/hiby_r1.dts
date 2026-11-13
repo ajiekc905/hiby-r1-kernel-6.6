@@ -1,0 +1,442 @@
+// SPDX-License-Identifier: GPL-2.0
+// Copyright (C) 2026 ajiekc905
+/*
+ * HiBy R1 (Ingenic X1600E, 64 MB) on the Ingenic 6.6 SDK kernel.
+ *
+ * Pin, clock and timing values come from the device's stock firmware
+ * (its device tree and module scripts). The TCU, watchdog and RTC nodes
+ * stay off: the dev loop arms the TCU watchdog before kexec and nothing
+ * here may touch it. No UART: the R1 has no console pins, and the boot
+ * log goes to the RAM ring (soc-x1600/r1ring.c).
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include "x1600.dtsi"
+
+/ {
+	model = "HiBy R1";
+	compatible = "hiby,r1", "ingenic,x1600";
+
+	/* top 1 MiB = dev-loop log ring, not RAM */
+	memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x03f00000>;
+	};
+
+	/*
+	 * 480x800 TFT, RGB888 pin positions without the two low bits of each
+	 * colour (PA8/9 and PA16/17 belong to the TCS1421 strap and the touch
+	 * controller). Init by 3-wire SPI on GPIOs. Controller LG (lcd-id 0) or
+	 * ST7701S (1): 4.4 reads it from ADC channel 3 (> 999 mV = ST7701S);
+	 * this unit reads 1 mV. Rails bldo2 (vccio) and bldo1 (vcc) of the
+	 * AXP2101 are not described until the PMIC driver exists; in the dev
+	 * loop 4.4 leaves them on.
+	 */
+	r1_panel: r1-panel {
+		compatible = "hiby,r1-panel";
+		pinctrl-names = "default";
+		pinctrl-0 = <&r1_tft>;
+		reset-gpios = <&gpa 31 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
+		spi-cs-gpios = <&gpa 30 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		spi-sck-gpios = <&gpa 0 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		spi-mosi-gpios = <&gpa 1 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		hiby,lcd-id = <0>;
+		port {
+			r1_panel_ep: endpoint {
+				remote-endpoint = <&dpu_out_ep>;
+			};
+		};
+	};
+};
+
+/* stock pwm_backlight.sh: PC00, 30 kHz, 0..101, active high */
+/ {
+	backlight_pwm0: backlight_pwm0 {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 33333>;
+		brightness-levels = <0 101>;
+		num-interpolated-steps = <101>;
+		default-brightness-level = <28>;
+	};
+
+	/* stock leds_pwm_add.sh: red PC01, blue PC02, 10 kHz, 0..100 */
+	leds {
+		compatible = "pwm-leds";
+		led-red {
+			label = "red";
+			pwms = <&pwm 1 100000>;
+			max-brightness = <100>;
+		};
+		led-blue {
+			label = "blue";
+			pwms = <&pwm 2 100000>;
+			max-brightness = <100>;
+		};
+	};
+};
+
+/* stock keyboard_gpio_add.sh and keyboard_adc_multifunc.sh */
+/ {
+	gpio-keys {
+		compatible = "gpio-keys";
+		key-power {
+			label = "power";
+			gpios = <&gpc 31 GPIO_ACTIVE_LOW INGENIC_GPIO_PULLUP>;
+			linux,code = <KEY_POWER>;
+			debounce-interval = <20>;
+			wakeup-source;
+		};
+		key-next {
+			label = "next";
+			gpios = <&gpc 28 GPIO_ACTIVE_HIGH INGENIC_GPIO_HIZ>;
+			linux,code = <KEY_NEXTSONG>;
+			debounce-interval = <20>;
+			wakeup-source;
+		};
+	};
+
+	adc-keys {
+		compatible = "adc-keys";
+		io-channels = <&sadc 0>;
+		io-channel-names = "buttons";
+		keyup-threshold-microvolt = <2800000>;
+		poll-interval = <50>;
+		key-play {
+			label = "play";
+			linux,code = <KEY_PLAYPAUSE>;
+			press-threshold-microvolt = <0>;
+		};
+		key-voldown {
+			label = "volume down";
+			linux,code = <KEY_VOLUMEDOWN>;
+			press-threshold-microvolt = <1000000>;
+		};
+		key-volup {
+			label = "volume up";
+			linux,code = <KEY_VOLUMEUP>;
+			press-threshold-microvolt = <1650000>;
+		};
+	};
+};
+
+&sadc {
+	status = "okay";
+	#io-channel-cells = <1>;
+};
+
+/* stock soc_i2c.sh + cst8xx_touch.sh; the controller's rail is AXP2101 aldo2.
+ * clk-always-enable: the SDK's own x1600.dtsi pins the i2c0 clock on, and
+ * per-transfer gating times out on i2c1 (#27: 5x pio timeouts probing
+ * the touch at 0x15 with correct pins) */
+&i2c1 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c1_pb_f0>;
+	clock-frequency = <400000>;
+	clk-always-enable;
+	touchscreen@15 {
+		compatible = "hynitron,cst8xx";
+		status = "okay";
+		reg = <0x15>;
+		reset-gpios = <&gpa 17 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
+		irq-gpios = <&gpa 16 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
+		touchscreen-max-x = <479>;
+		touchscreen-max-y = <799>;
+	};
+};
+
+&pwm {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm0_pc &pwm1_pc &pwm2_pc>;
+};
+
+&dpu {
+	status = "okay";
+	port {
+		dpu_out_ep: endpoint {
+			remote-endpoint = <&r1_panel_ep>;
+		};
+	};
+};
+
+&msc1 {
+	status = "okay";
+	pinctrl-names = "default", "off";
+	pinctrl-0 = <&msc1_4bit>;
+	pinctrl-1 = <&msc1_off>;
+	bus-width = <4>;
+	max-frequency = <50000000>;
+	voltage-ranges = <3300 3300>;
+	cap-sd-highspeed;
+	ingenic,removal-removable;
+	ingenic,cd-gpios = <&gpb 22 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
+	ingenic,pwr-gpios = <&gpc 25 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+};
+
+/*
+ * AP6212A Wi-Fi (BCM43430A1) on MSC0, PB12..PB17 function 0 as 4.4 muxes
+ * them; stock soc_msc.sh: 4 bit, 50 MHz, 1.8..3.3 V, keep power. No card
+ * at probe: init raises WL_REG_ON (rfkill "wlan") and writes INSERT to
+ * the host's "present" once the firmware is reachable, then brcmfmac binds.
+ */
+&msc0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&msc0_4bit_f0>;
+	bus-width = <4>;
+	max-frequency = <50000000>;
+	voltage-ranges = <1800 3300>;
+	cap-sd-highspeed;
+	keep-power-in-suspend;
+	ingenic,removal-nonremovable;
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	/* in-band SDIO interrupts got lost (every dcmd timed out after ~30 s,
+	 * #60); stock cywdhd takes WL_HOST_WAKE on PA08 instead */
+	wifi@1 {
+		reg = <1>;
+		compatible = "brcm,bcm4329-fmac";
+		interrupt-parent = <&gpa>;
+		interrupts = <8 IRQ_TYPE_LEVEL_HIGH INGENIC_GPIO_NOBIAS>;
+		interrupt-names = "host-wake";
+	};
+};
+
+
+/*
+ * MSC1 bus driven low while the card has no VDD: left as MSC pins (CMD
+ * driven, DAT pulled up) the card is fed through them, misses its power-on
+ * reset and then never reports ready to ACMD41 (2026-11-07 dev-loop trace).
+ */
+&pinctrl {
+	r1_pins: r1-pins {
+		msc1_off: msc1-off {
+			ingenic,pinmux = <&gpd 0 5>;
+			ingenic,pinmux-funcsel = <PINCTL_FUNCLOLVL>;
+		};
+		r1_tft: r1-tft {
+			ingenic,pinmux = <&gpa 2 7>, <&gpa 10 15>, <&gpa 18 27>;
+			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
+		};
+		/* stock soc_aic.sh: PB25 DO, PB26 MCLK, PB27 BCLK, PB28 LRCLK.
+		 * The SDK aic_pb group also muxes PB21-PB24 (codec reset, SD CD,
+		 * AXP IRQ, TCS strap), so the R1 uses its own range. */
+		i2s_pb: i2s-pb {
+			ingenic,pinmux = <&gpb 25 28>;
+			ingenic,pinmux-funcsel = <PINCTL_FUNCTION0>;
+		};
+	};
+};
+
+&otg_phy {
+	status = "okay";
+};
+
+&otg {
+	status = "okay";
+	dr_mode = "otg";
+	usb-role-switch;
+	role-switch-default-mode = "peripheral";
+};
+
+&sfc {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&sfc_pc>;
+	ingenic,sfc-init-frequency = <200000000>;
+	ingenic,sfc-max-frequency = <400000000>;
+	ingenic,use_ofpart_info = /bits/ 8 <0>;
+	ingenic,spiflash_param_offset = <0>;
+};
+
+&cpufreq { status = "disabled"; };
+&tcu { status = "disabled"; };
+&watchdog { status = "disabled"; };
+&rtc { status = "disabled"; };
+/* AP6212A BT: H4 on uart0 (PB07..PB10, stock bt_init: /dev/ttyS0 3 Mbaud,
+ * brcm_patchram_plus from userspace). Power as 4.4 cywdhd glue: BT_REG_ON
+ * PB04, BT_WAKE PB05 high, 32 kHz on PC26 (func0). */
+/* extclk (ingenic,fixed-clock) never gets a driver, so fw_devlink held
+ * uart0 until the deferred-probe timeout (ttyS0 at 19 s); the driver takes
+ * gate_uart0 by name and never used this clock */
+&uart0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&uart0_pb>;
+	/delete-property/ clocks;
+	/delete-property/ clock-names;
+};
+
+/ {
+	r1_headset: r1-headset {
+		compatible = "hiby,r1-headset";
+		io-channels = <&sadc 1>, <&sadc 2>;
+		io-channel-names = "headset", "remote";
+	};
+
+	tcs1421 {
+		compatible = "hiby,tcs1421";
+		cfg0-gpios = <&gpa 9 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		cfg1-gpios = <&gpb 24 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		vbus-gpios = <&gpc 24 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		usb-role = <&otg>;
+	};
+
+	bt_wake: regulator-bt-wake {
+		compatible = "regulator-fixed";
+		regulator-name = "bt_wake";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		gpio = <&gpb 5 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		enable-active-high;
+		regulator-always-on;
+	};
+
+	bt_rfkill: bt-rfkill {
+		compatible = "rfkill-gpio";
+		label = "bluetooth";
+		radio-type = "bluetooth";
+		shutdown-gpios = <&gpb 4 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&rtc32k_enable>;
+	};
+
+	wl_rfkill: wl-rfkill {
+		compatible = "rfkill-gpio";
+		label = "wlan";
+		radio-type = "wlan";
+		shutdown-gpios = <&gpb 3 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+	};
+};
+&uart1 { status = "disabled"; };
+&uart2 { status = "disabled"; };
+&uart3 { status = "disabled"; };
+/* stock soc_i2c.sh: AXP2101 at 0x34, cw2015 at 0x62 */
+&i2c0 {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c0_pa>;
+	clock-frequency = <400000>;
+	clk-always-enable;
+	pmic: pmic@34 {
+		compatible = "x-powers,axp2101";
+		reg = <0x34>;
+		irq-gpios = <&gpb 23 GPIO_ACTIVE_LOW INGENIC_GPIO_NOBIAS>;
+	};
+	fuel-gauge@62 {
+		compatible = "cellwise,cw2015";
+		reg = <0x62>;
+		cellwise,battery-profile = [18 0a 65 65 69 6a 6a 68 66 61 5f 59 53 4f 4a 46 42 3b 33 29 24 33 45 4b 27 21 0c cd 20 40 43 4a 4f 4d 4e 4e 3c 1a 65 30 09 43 11 38 70 9a b5 1e 44 77 97 9b 80 cd ff cb 2f 00 64 a5 b5 08 40 99];
+		cellwise,monitor-interval-ms = <1000>;
+	};
+};
+
+/* stock tcs1421_add.sh: cfg0 PA09, cfg1 PB24, NormalDRP (both hi). In the
+ * dev loop 4.4 sets the straps before kexec and they persist; gpio-hog does
+ * not take on this pinctrl-integrated gpiochip (checked in debug/gpio), so
+ * the role driver belongs with the USB-DAC work, not here. */
+
+/* stock codec_cs43131.sh: CS43131 on bit-bang bus 3 (PB30/PB31, 200 kHz),
+ * power PB02, reset PB21. The mainline cs43130 driver takes the codec power
+ * rail as the VD regulator enable, so probe powers the codec before it
+ * reads the chip ID. regulator-fixed takes its enable from "gpio"
+ * ("enable-gpios" is a regulator-gpio property and is silently ignored
+ * here: PB02 then stays wherever 4.4 left it, low, and the codec NACKs and
+ * plays noise once a stream starts). Its INT pin is not wired on the R1,
+ * so no interrupts (patch 0011 makes the IRQ optional). */
+/ {
+	reg_va: regulator-va {
+		compatible = "regulator-fixed";
+		regulator-name = "VA";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
+	reg_vp: regulator-vp {
+		compatible = "regulator-fixed";
+		regulator-name = "VP";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+	reg_vcp: regulator-vcp {
+		compatible = "regulator-fixed";
+		regulator-name = "VCP";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+	};
+	reg_vd: regulator-vd {
+		compatible = "regulator-fixed";
+		regulator-name = "VD";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&gpb 2 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+		enable-active-high;
+		startup-delay-us = <10000>;
+	};
+	reg_vl: regulator-vl {
+		compatible = "regulator-fixed";
+		regulator-name = "VL";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		regulator-always-on;
+	};
+
+	i2c_gpio3: i2c-gpio-3 {
+		compatible = "i2c-gpio";
+		status = "okay";
+		sda-gpios = <&gpb 31 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN) INGENIC_GPIO_NOBIAS>;
+		scl-gpios = <&gpb 30 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN) INGENIC_GPIO_NOBIAS>;
+		i2c-gpio,delay-us = <5>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		codec: codec@30 {
+			compatible = "cirrus,cs43131";
+			reg = <0x30>;
+			reset-gpios = <&gpb 21 GPIO_ACTIVE_HIGH INGENIC_GPIO_NOBIAS>;
+			VA-supply = <&reg_va>;
+			VP-supply = <&reg_vp>;
+			VCP-supply = <&reg_vcp>;
+			VD-supply = <&reg_vd>;
+			VL-supply = <&reg_vl>;
+		};
+	};
+
+	dump_pcm_codec: dump-pcm-codec {
+		compatible = "ingenic,pcm-dump-codec";
+	};
+
+	/* stock x1600_hiby_r1_sound_card.sh: one I2S link, AIC master.
+	 * Link 2 is the AIC transmit-FIFO loopback, for bring-up capture. */
+	sound {
+		compatible = "ingenic,x1600-sound";
+		ingenic,model = "hiby-r1";
+		ingenic,dai-link = "i2s-ecodec", "i2s-tloop";
+		ingenic,stream = "i2s-ecodec", "i2s-tloop";
+		ingenic,cpu-dai = <&i2s>, <&i2s_tloop>;
+		ingenic,platform = <&aic>, <&i2s_tloop>;
+		ingenic,codec = <&codec>, <&dump_pcm_codec>;
+		ingenic,codec-dai = "cs43130-asp-pcm", "pcm-dump";
+	};
+};
+
+&aic {
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2s_pb>;
+};
+&can0 { status = "disabled"; };
+&can1 { status = "disabled"; };
+&cdbus { status = "disabled"; };
+&aes { status = "disabled"; };
+&hash { status = "disabled"; };
+&mac0 { status = "disabled"; };
+&mcu { status = "disabled"; };
+&efuse { status = "disabled"; };

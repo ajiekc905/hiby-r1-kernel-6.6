@@ -1,0 +1,53 @@
+diff --git a/kernel/kernel-6.6/module_drivers/sound/soc/ingenic/boards/halley6.c b/kernel/kernel-6.6/module_drivers/sound/soc/ingenic/boards/halley6.c
+index 808a4743b..22ec9bee3 100644
+--- a/kernel/kernel-6.6/module_drivers/sound/soc/ingenic/boards/halley6.c
++++ b/kernel/kernel-6.6/module_drivers/sound/soc/ingenic/boards/halley6.c
+@@ -36,7 +36,8 @@ static int x1600_i2s_hw_params(struct snd_pcm_substream *substream, struct snd_p
+ 	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
+ 	int ret;
+ 	int id = 0;
+-	int sysclk = 24576000;
++	int sysclk = (22579200 % params_rate(params) == 0) ?
++		22579200 : 24576000;
+ 	int div = 24576000 / params_rate(params) / 64;
+ 	int aic_mode = 0, codec_mode = 0;
+ 
+@@ -73,6 +74,28 @@ static int x1600_i2s_hw_params(struct snd_pcm_substream *substream, struct snd_p
+ 		return ret;
+ 	}
+ 
++	{
++		struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
++
++		ret = snd_soc_component_set_sysclk(codec_dai->component, 0, 0,
++						   sysclk, SND_SOC_CLOCK_IN);
++		if (ret) {
++			return ret;
++		}
++		ret = snd_soc_dai_set_sysclk(codec_dai, 0,
++					     params_rate(params) * 64,
++					     SND_SOC_CLOCK_IN);
++		if (ret) {
++			return ret;
++		}
++		ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S |
++					  SND_SOC_DAIFMT_NB_NF |
++					  SND_SOC_DAIFMT_CBS_CFS);
++		if (ret) {
++			return ret;
++		}
++	}
++
+ 	ret = snd_soc_dai_set_clkdiv(cpu_dai, id, div);
+ 	if (ret) {
+ 		return ret;
+@@ -99,7 +122,8 @@ static int x1600_i2s_ecdc_dai_link_init(struct snd_soc_pcm_runtime *rtd)
+ 	if (IS_ERR(en_3v3_gpiod)) {
+ 		return PTR_ERR(en_3v3_gpiod);
+ 	}
+-	gpiod_set_value_cansleep(en_3v3_gpiod, 1);
++	if (en_3v3_gpiod)
++		gpiod_set_value_cansleep(en_3v3_gpiod, 1);
+ 
+ 	return 0;
+ }

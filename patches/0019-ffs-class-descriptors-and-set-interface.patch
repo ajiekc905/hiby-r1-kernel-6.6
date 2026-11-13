@@ -1,0 +1,48 @@
+diff --git a/kernel/kernel-6.6/drivers/usb/gadget/composite.c b/kernel/kernel-6.6/drivers/usb/gadget/composite.c
+index 0ace45b66..dfeede978 100644
+--- a/kernel/kernel-6.6/drivers/usb/gadget/composite.c
++++ b/kernel/kernel-6.6/drivers/usb/gadget/composite.c
+@@ -1944,12 +1944,10 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
+ 			break;
+ 
+ 		/*
+-		 * If there's no get_alt() method, we know only altsetting zero
+-		 * works. There is no need to check if set_alt() is not NULL
+-		 * as we check this in usb_add_function().
++		 * No get_alt() gate: f_fs has no get_alt but handles every
++		 * alt in set_alt, and a UAC streaming interface only starts
++		 * on alt != 0. Single-alt functions never see one.
+ 		 */
+-		if (w_value && !f->get_alt)
+-			break;
+ 
+ 		spin_lock(&cdev->lock);
+ 		value = f->set_alt(f, w_index, w_value);
+diff --git a/kernel/kernel-6.6/drivers/usb/gadget/function/f_fs.c b/kernel/kernel-6.6/drivers/usb/gadget/function/f_fs.c
+index 6e9ef35a4..53f8a4989 100644
+--- a/kernel/kernel-6.6/drivers/usb/gadget/function/f_fs.c
++++ b/kernel/kernel-6.6/drivers/usb/gadget/function/f_fs.c
+@@ -2076,9 +2076,9 @@ static int __must_check ffs_do_single_desc(char *data, unsigned len,
+ 				goto inv_length;
+ 			break;
+ 		} else {
+-			pr_vdebug("unknown descriptor: %d for class %d\n",
++			pr_vdebug("class descriptor: %d for class %d, skipped\n",
+ 			      _ds->bDescriptorType, *current_class);
+-			return -EINVAL;
++			break;
+ 		}
+ 
+ 	case USB_DT_OTG:
+@@ -2112,9 +2112,8 @@ static int __must_check ffs_do_single_desc(char *data, unsigned len,
+ 		return -EINVAL;
+ 
+ 	default:
+-		/* We should never be here */
+-		pr_vdebug("unknown descriptor: %d\n", _ds->bDescriptorType);
+-		return -EINVAL;
++		pr_vdebug("unknown descriptor: %d, skipped\n", _ds->bDescriptorType);
++		break;
+ 
+ inv_length:
+ 		pr_vdebug("invalid length: %d (descriptor %d)\n",

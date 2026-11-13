@@ -1,0 +1,58 @@
+diff --git a/kernel/kernel-6.6/drivers/iio/adc/Kconfig b/kernel/kernel-6.6/drivers/iio/adc/Kconfig
+index 517b3db11..cf5ddfeca 100644
+--- a/kernel/kernel-6.6/drivers/iio/adc/Kconfig
++++ b/kernel/kernel-6.6/drivers/iio/adc/Kconfig
+@@ -525,6 +525,12 @@ config INA2XX_ADC
+ 	  Say yes here to build support for TI INA2xx family of Power Monitors.
+ 	  This driver is mutually exclusive with the HWMON version.
+ 
++config X1600_SADC
++	tristate "Ingenic X1600 SADC auxiliary channels"
++	depends on MACH_XBURST || COMPILE_TEST
++	help
++	  The four AUX channels of the Ingenic X1600 SADC as IIO voltages.
++
+ config INGENIC_ADC
+ 	tristate "Ingenic JZ47xx SoCs ADC driver"
+ 	depends on MIPS || COMPILE_TEST
+diff --git a/kernel/kernel-6.6/drivers/iio/adc/Makefile b/kernel/kernel-6.6/drivers/iio/adc/Makefile
+index 2facf9793..bfafcde8e 100644
+--- a/kernel/kernel-6.6/drivers/iio/adc/Makefile
++++ b/kernel/kernel-6.6/drivers/iio/adc/Makefile
+@@ -52,6 +52,7 @@ obj-$(CONFIG_IMX8QXP_ADC) += imx8qxp-adc.o
+ obj-$(CONFIG_IMX93_ADC) += imx93_adc.o
+ obj-$(CONFIG_INA2XX_ADC) += ina2xx-adc.o
+ obj-$(CONFIG_INGENIC_ADC) += ingenic-adc.o
++obj-$(CONFIG_X1600_SADC) += x1600-sadc.o
+ obj-$(CONFIG_INTEL_MRFLD_ADC) += intel_mrfld_adc.o
+ obj-$(CONFIG_LP8788_ADC) += lp8788_adc.o
+ obj-$(CONFIG_LPC18XX_ADC) += lpc18xx_adc.o
+diff --git a/kernel/kernel-6.6/drivers/input/touchscreen/Kconfig b/kernel/kernel-6.6/drivers/input/touchscreen/Kconfig
+index e3e232454..f86afb576 100644
+--- a/kernel/kernel-6.6/drivers/input/touchscreen/Kconfig
++++ b/kernel/kernel-6.6/drivers/input/touchscreen/Kconfig
+@@ -438,6 +438,12 @@ config TOUCHSCREEN_HYCON_HY46XX
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called hycon-hy46xx.
+ 
++config TOUCHSCREEN_HYN_CST8XX
++	tristate "Hynitron CST8xx single-touch controller"
++	depends on I2C
++	help
++	  The CST8xx touch controller of the HiBy R1.
++
+ config TOUCHSCREEN_HYNITRON_CSTXXX
+ 	tristate "Hynitron touchscreen support"
+ 	depends on I2C
+diff --git a/kernel/kernel-6.6/drivers/input/touchscreen/Makefile b/kernel/kernel-6.6/drivers/input/touchscreen/Makefile
+index 62bd24f3a..71c8c0c44 100644
+--- a/kernel/kernel-6.6/drivers/input/touchscreen/Makefile
++++ b/kernel/kernel-6.6/drivers/input/touchscreen/Makefile
+@@ -49,6 +49,7 @@ obj-$(CONFIG_TOUCHSCREEN_FUJITSU)	+= fujitsu_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_GOODIX)	+= goodix_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_HIDEEP)	+= hideep.o
+ obj-$(CONFIG_TOUCHSCREEN_HYNITRON_CSTXXX)	+= hynitron_cstxxx.o
++obj-$(CONFIG_TOUCHSCREEN_HYN_CST8XX)	+= hyn-cst8xx.o
+ obj-$(CONFIG_TOUCHSCREEN_ILI210X)	+= ili210x.o
+ obj-$(CONFIG_TOUCHSCREEN_ILITEK)	+= ilitek_ts_i2c.o
+ obj-$(CONFIG_TOUCHSCREEN_IMAGIS)	+= imagis.o

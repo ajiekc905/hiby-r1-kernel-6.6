@@ -1,0 +1,13 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
+--- a/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/mmc/host/ingenic_mmc.c
+@@ -1336,8 +1336,8 @@ static ssize_t ingenic_mmc_present_store(struct device *dev,
+         struct device_attribute *attr,
+         const char *buf, size_t count)
+ {
+-	struct ingenic_mmc_pdata *pdata = dev->platform_data;
+ 	struct ingenic_mmc_host *host = dev_get_drvdata(dev);
++	struct ingenic_mmc_pdata *pdata = host->pdata;
+ 
+ 	if ((buf == NULL) || (pdata->removal != NONREMOVABLE)) {
+ 		dev_err(host->dev, "can't set present\n");

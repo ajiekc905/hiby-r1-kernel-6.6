@@ -1,0 +1,45 @@
+diff --git a/kernel/kernel-6.6/drivers/usb/gadget/Kconfig b/kernel/kernel-6.6/drivers/usb/gadget/Kconfig
+index 24b6d1d44..67b4ce8ef 100644
+--- a/kernel/kernel-6.6/drivers/usb/gadget/Kconfig
++++ b/kernel/kernel-6.6/drivers/usb/gadget/Kconfig
+@@ -201,6 +201,9 @@ config USB_F_UAC1_LEGACY
+ config USB_F_UAC2
+ 	tristate
+ 
++config USB_F_UAC_SA
++	tristate
++
+ config USB_F_UVC
+ 	tristate
+ 	select UVC_COMMON
+@@ -434,6 +437,17 @@ config USB_CONFIGFS_F_UAC2
+ 	  received from the USB Host and choose to provide whatever it
+ 	  wants as audio data to the USB Host.
+ 
++config USB_CONFIGFS_F_UAC_SA
++	bool "USB DAC (uac_sa)"
++	depends on USB_CONFIGFS
++	select USB_LIBCOMPOSITE
++	select USB_F_UAC_SA
++	help
++	  An asynchronous USB Audio Class 2.0 speaker with explicit feedback
++	  whose stream user space reads from /dev/uac_sa: the player as a
++	  USB DAC for a computer or a phone. PCM up to 384 kHz and, when
++	  enabled, native DSD. The function is "uac_sa" in configfs.
++
+ config USB_CONFIGFS_F_MIDI
+ 	bool "MIDI function"
+ 	depends on USB_CONFIGFS
+diff --git a/kernel/kernel-6.6/drivers/usb/gadget/function/Makefile b/kernel/kernel-6.6/drivers/usb/gadget/function/Makefile
+index 2593de4d9..d3f0f8ec3 100644
+--- a/kernel/kernel-6.6/drivers/usb/gadget/function/Makefile
++++ b/kernel/kernel-6.6/drivers/usb/gadget/function/Makefile
+@@ -40,6 +40,8 @@ usb_f_uac1_legacy-y		:= f_uac1_legacy.o u_uac1_legacy.o
+ obj-$(CONFIG_USB_F_UAC1_LEGACY)	+= usb_f_uac1_legacy.o
+ usb_f_uac2-y			:= f_uac2.o
+ obj-$(CONFIG_USB_F_UAC2)	+= usb_f_uac2.o
++usb_f_uac_sa-y			:= f_uac_sa.o
++obj-$(CONFIG_USB_F_UAC_SA)	+= usb_f_uac_sa.o
+ usb_f_uvc-y			:= f_uvc.o uvc_queue.o uvc_v4l2.o uvc_video.o uvc_configfs.o
+ obj-$(CONFIG_USB_F_UVC)		+= usb_f_uvc.o
+ usb_f_midi-y			:= f_midi.o

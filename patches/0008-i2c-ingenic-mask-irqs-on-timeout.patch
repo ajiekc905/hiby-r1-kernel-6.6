@@ -1,0 +1,20 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/i2c/busses/i2c-ingenic.c b/kernel/kernel-6.6/module_drivers/drivers/i2c/busses/i2c-ingenic.c
+index 447382efe..12ac84ee3 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/i2c/busses/i2c-ingenic.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/i2c/busses/i2c-ingenic.c
+@@ -643,6 +643,7 @@ static inline int xfer_read(struct i2c_ingenic *i2c, unsigned char *buf, int len
+ 	if (!timeout) {
+ 		dev_err(&(i2c->adap.dev), "--I2C irq read timeout\n");
+ 		i2c_ingenic_dump_regs(i2c);
++		i2c_writel(i2c, I2C_INTM, 0);
+ 		ret = -ETIMEDOUT;
+ 	}
+ 
+@@ -731,6 +732,7 @@ static inline int xfer_write(struct i2c_ingenic *i2c, unsigned char *buf, int le
+ 	if (!timeout) {
+ 		dev_err(&(i2c->adap.dev), "--I2C pio write wait timeout\n");
+ 		i2c_ingenic_dump_regs(i2c);
++		i2c_writel(i2c, I2C_INTM, 0);
+ 		ret = -ETIMEDOUT;
+ 	}
+ 

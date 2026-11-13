@@ -1,0 +1,10 @@
+diff --git a/kernel/kernel-6.6/module_drivers/Makefile b/kernel/kernel-6.6/module_drivers/Makefile
+index 5a753be16..fd1492a74 100644
+--- a/kernel/kernel-6.6/module_drivers/Makefile
++++ b/kernel/kernel-6.6/module_drivers/Makefile
+@@ -1,5 +1,3 @@
+-# 用于编译调试错误.
+-subdir-ccflags-y += -Werror
+ 
+ # Device Tree
+ obj-$(CONFIG_BUILTIN_DTB)       := dts/

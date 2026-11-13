@@ -1,0 +1,42 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/usb/phy/phy-ingenic.c b/kernel/kernel-6.6/module_drivers/drivers/usb/phy/phy-ingenic.c
+index 7766f7641..54e99fdf3 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/usb/phy/phy-ingenic.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/usb/phy/phy-ingenic.c
+@@ -381,6 +381,28 @@ static ssize_t sw_switch_hsotg_store(struct device *dev, struct device_attribute
+ 	return count;
+ }
+ 
++static struct usb_phy_data *ingenic_phy_single;
++
++void ingenic_usb_phy_id_host(int host)
++{
++	struct usb_phy_data *usb_phy = ingenic_phy_single;
++	unsigned int usbrdt;
++	unsigned long flags;
++
++	if (!usb_phy)
++		return;
++	spin_lock_irqsave(&usb_phy->sw_switch_id_lock, flags);
++	usbrdt = cpm_inl(CPM_USBRDT);
++	usbrdt |= USBRDT_IDDIG_EN;
++	if (host)
++		usbrdt &= ~USBRDT_IDDIG_REG;
++	else
++		usbrdt |= USBRDT_IDDIG_REG;
++	cpm_outl(usbrdt, CPM_USBRDT);
++	spin_unlock_irqrestore(&usb_phy->sw_switch_id_lock, flags);
++}
++EXPORT_SYMBOL_GPL(ingenic_usb_phy_id_host);
++
+ static DEVICE_ATTR(sw_switch_hsotg, S_IWUSR, NULL, sw_switch_hsotg_store);
+ 
+ static struct device_attribute *usb_phy_attributes[] = {
+@@ -487,6 +509,8 @@ static int ingenic_usb_phy_probe(struct platform_device *pdev)
+ 	usb_phy->phy.otg->set_peripheral = usb_phy_set_peripheral;
+ 
+ 	spin_lock_init(&usb_phy->sw_switch_id_lock);
++	if (!ingenic_phy_single)
++		ingenic_phy_single = usb_phy;
+ 
+ 	usb_phy->gate_clk = devm_clk_get(&pdev->dev, "gate_usbphy");
+ 	if (IS_ERR(usb_phy->gate_clk)) {

@@ -1,0 +1,29 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Kconfig b/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Kconfig
+index 531cf344b..f03991349 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Kconfig
++++ b/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Kconfig
+@@ -48,6 +48,12 @@ config STAGE_ZC50289HSHD02
+         help
+                 lcd panel ZC50289HSHD02, for ingenicfb drivers.
+ 
++config STAGE_HIBY_R1
++	tristate "HiBy R1 480x800 TFT panel"
++	depends on FB_INGENIC_DISPLAYS_STAGE
++	help
++		HiBy R1 panel (LG or ST7701S controller, 3-wire SPI init).
++
+ config STAGE_FW040
+ 	tristate "lcd panel FW040"
+ 	depends on FB_INGENIC_DISPLAYS_STAGE
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Makefile b/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Makefile
+index ec5079414..ca84cccda 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Makefile
++++ b/kernel/kernel-6.6/module_drivers/drivers/video/fbdev/ingenic/displays/Makefile
+@@ -26,6 +26,7 @@ obj-$(CONFIG_STAGE_G104X1L04) += panel-G104X1L04.o
+ obj-$(CONFIG_STAGE_KD035HVFMD057) += panel-kd035hvfmd057.o
+ obj-$(CONFIG_STAGE_GC9203) += panel-gc9203.o
+ obj-$(CONFIG_STAGE_FW040) += panel-fw040.o
++obj-$(CONFIG_STAGE_HIBY_R1) += panel-hiby-r1.o
+ obj-$(CONFIG_STAGE_FW035) += panel-fw035.o
+ obj-$(CONFIG_STAGE_ATK7016) += panel-atk7016.o
+ obj-$(CONFIG_STAGE_HC050IG40031) += panel-hc050ig40031.o

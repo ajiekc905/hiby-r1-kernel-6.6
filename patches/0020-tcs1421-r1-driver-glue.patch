@@ -1,0 +1,28 @@
+diff --git a/kernel/kernel-6.6/drivers/misc/Kconfig b/kernel/kernel-6.6/drivers/misc/Kconfig
+index cadd4a820..7caab30e7 100644
+--- a/kernel/kernel-6.6/drivers/misc/Kconfig
++++ b/kernel/kernel-6.6/drivers/misc/Kconfig
+@@ -579,4 +579,14 @@ source "drivers/misc/cardreader/Kconfig"
+ source "drivers/misc/uacce/Kconfig"
+ source "drivers/misc/pvpanic/Kconfig"
+ source "drivers/misc/mchp_pci1xxxx/Kconfig"
++
++config TCS1421_R1
++	tristate "HiBy R1 TCS1421 USB-C role straps"
++	depends on GPIOLIB && OF
++	help
++	  The TCS1421 role straps (CFG0/CFG1 GPIOs) of the HiBy R1,
++	  with the stock /sys/devices/platform/tcs1421/tcs1421_cfg
++	  interface, driving the dwc2 usb-role-switch when linked
++	  from the device tree (Source = host, anything else = device).
++
+ endmenu
+diff --git a/kernel/kernel-6.6/drivers/misc/Makefile b/kernel/kernel-6.6/drivers/misc/Makefile
+index f2a4d1ff6..360d04aa1 100644
+--- a/kernel/kernel-6.6/drivers/misc/Makefile
++++ b/kernel/kernel-6.6/drivers/misc/Makefile
+@@ -67,3 +67,4 @@ obj-$(CONFIG_TMR_MANAGER)      += xilinx_tmr_manager.o
+ obj-$(CONFIG_TMR_INJECT)	+= xilinx_tmr_inject.o
+ obj-$(CONFIG_TPS6594_ESM)	+= tps6594-esm.o
+ obj-$(CONFIG_TPS6594_PFSM)	+= tps6594-pfsm.o
++obj-$(CONFIG_TCS1421_R1)	+= tcs1421-r1.o

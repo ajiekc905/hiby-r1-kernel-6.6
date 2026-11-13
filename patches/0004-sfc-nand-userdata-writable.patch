@@ -1,0 +1,120 @@
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/mtd/Kconfig b/kernel/kernel-6.6/module_drivers/drivers/mtd/Kconfig
+index fddefbb2c..6493ac778 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/mtd/Kconfig
++++ b/kernel/kernel-6.6/module_drivers/drivers/mtd/Kconfig
+@@ -15,4 +15,14 @@ config MTD_BLOCK_BBT_RO_BLOCK_SIZE
+ 	depends on MTD_BLOCK_BBT_RO
+ 	default 4096
+ 
++config R1_SFC_READONLY
++	bool "Ingenic SFC NAND: writes only in the userdata partition"
++	help
++	  The driver's page program and block erase return -EROFS outside
++	  the burner partition named "userdata" (found at probe, end
++	  clamped to the MTD size), and every other partition loses
++	  MTD_WRITEABLE, so only userdata can be written (HiBy R1: the
++	  stock rootfs, kernel and recovery stay read-only, /usr/data
++	  settings, Wi-Fi and Bluetooth state can be saved).
++
+ endif # MTD
+diff --git a/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_nand.c b/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_nand.c
+index 66aa3c311..1942b2635 100644
+--- a/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_nand.c
++++ b/kernel/kernel-6.6/module_drivers/drivers/mtd/devices/ingenic_sfc_v2/ingenic_sfc_nand.c
+@@ -26,6 +26,7 @@
+ #include <linux/mutex.h>
+ #include <linux/mtd/mtd.h>
+ #include <linux/mtd/partitions.h>
++#include <linux/string.h>
+ #include <linux/mtd/rawnand.h>
+ #include <linux/mtd/nand.h>
+ #include <asm/uaccess.h>
+@@ -156,12 +157,43 @@ retry:
+ 	return ret;
+ }
+ 
++#ifdef CONFIG_R1_SFC_READONLY
++static bool r1_userdata_range(struct sfc_flash *flash, loff_t addr, size_t len)
++{
++	struct ingenic_sfcnand_flashinfo *nand_info = flash->flash_info;
++	struct mtd_partition *part = nand_info->partition.partition;
++	uint8_t num = nand_info->partition.num_partition;
++	uint8_t i;
++
++	if (!part || !len)
++		return false;
++	for (i = 0; i < num; i++) {
++		loff_t end;
++
++		if (strcmp(part[i].name, "userdata"))
++			continue;
++		end = part[i].offset + part[i].size;
++		if (end > flash->mtd.size)
++			end = flash->mtd.size;
++		return addr >= (loff_t)part[i].offset &&
++		       addr + (loff_t)len <= end;
++	}
++	return false;
++}
++#endif
++
+ static int32_t sfcnand_do_write(struct sfc_flash *flash, u_char *buffer, struct flash_address *flash_address, size_t len)
+ {
+ 	struct ingenic_sfcnand_flashinfo *nand_info = flash->flash_info;
+ 	struct ingenic_sfcnand_ops *ops = nand_info->ops;
+ 	struct sfc_cdt_xfer xfer;
+ 	int32_t ret = 0;
++#ifdef CONFIG_R1_SFC_READONLY
++	if (!r1_userdata_range(flash,
++			(loff_t)flash_address->pageaddr * flash->mtd.writesize +
++			flash_address->columnaddr, len))
++		return -EROFS;
++#endif
+ 
+ 	memset(&xfer, 0, sizeof(xfer));
+ 
+@@ -214,6 +246,12 @@ static int32_t sfcnand_do_erase(struct sfc_flash *flash, uint32_t pageaddr)
+ 	struct ingenic_sfcnand_ops *ops = nand_info->ops;
+ 	struct sfc_cdt_xfer xfer;
+ 	int32_t ret = 0;
++#ifdef CONFIG_R1_SFC_READONLY
++	if (!r1_userdata_range(flash,
++			(loff_t)pageaddr * flash->mtd.writesize,
++			flash->mtd.erasesize))
++		return -EROFS;
++#endif
+ 
+ 	memset(&xfer, 0, sizeof(xfer));
+ 
+@@ -1397,6 +1435,9 @@ int ingenic_sfc_nand_probe(struct sfc_flash *flash)
+ 	flash->mtd.owner = THIS_MODULE;
+ 	flash->mtd.type = MTD_NANDFLASH;
+ 	flash->mtd.flags |= MTD_CAP_NANDFLASH;
++#ifdef CONFIG_R1_SFC_READONLY
++	dev_info(flash->dev, "writes only in userdata (CONFIG_R1_SFC_READONLY)\n");
++#endif
+ 	flash->mtd.erasesize = nand_info->param.blocksize;
+ 	flash->mtd.writesize = nand_info->param.pagesize;
+ #ifndef CONFIG_INGENIC_SFCNAND_FMW
+@@ -1447,9 +1488,20 @@ int ingenic_sfc_nand_probe(struct sfc_flash *flash)
+ 		}
+ 		if (-EINVAL == ret) {
+ 			ret = mtd_device_parse_register(&flash->mtd, NULL, NULL, NULL, 0);    /* 将整个nand注册成一个完整的mtd分区 */
+-		} else
++		} else {
++#ifdef CONFIG_R1_SFC_READONLY
++			int i;
++
++			for (i = 0; i < nand_info->partition.num_partition; i++) {
++				if (strcmp(nand_info->partition.partition[i].name, "userdata"))
++					nand_info->partition.partition[i].mask_flags |= MTD_WRITEABLE;
++				else
++					nand_info->partition.partition[i].mask_flags &= ~MTD_WRITEABLE;
++			}
++#endif
+ 			ret = mtd_device_parse_register(&flash->mtd, ingenic_probe_types, NULL, \
+ 			                                nand_info->partition.partition, nand_info->partition.num_partition);
++		}
+ 	} else {
+ 
+ 		/* use ofpart partitions */
